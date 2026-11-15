@@ -1,0 +1,64 @@
+# Build directories
+build/
+build-*/
+cmake-build-*/
+bin/
+lib/
+out/
+.tools/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+cmake_install.cmake
+install_manifest.txt
+CTestTestfile.cmake
+compile_commands.json
+*.cmake.in
+
+# Object and archive files
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+
+# Debug files
+*.dSYM/
+*.pdb
+*.ilk
+
+# AddressSanitizer and testing logs
+asan.log*
+Testing/
+junit.xml
+
+# IDE and Editor configurations
+.vscode/
+.vs/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.user
+*.suo
+*.sln
+*.vcxproj
+*.filters
+
+# QueryCraft database files and runtime data
+data/*.db
+data/*.wal
+data/*.log
+data/*.dat
+!data/.gitkeep
+
+# Temporary and OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
