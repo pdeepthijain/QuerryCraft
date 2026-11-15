@@ -59,3 +59,11 @@ TEST(StatusTest, InternalErrorStatus) {
     EXPECT_EQ(s.code(), StatusCode::InternalError);
     EXPECT_EQ(s.to_string(), "Internal Error: buffer frame corruption detected");
 }
+
+TEST(StatusTest, SyntaxErrorStatus) {
+    Status s = Status::SyntaxError("unexpected character '@' at line 1, col 5");
+    EXPECT_FALSE(s.ok());
+    EXPECT_EQ(s.code(), StatusCode::SyntaxError);
+    EXPECT_EQ(s.message(), "unexpected character '@' at line 1, col 5");
+    EXPECT_EQ(s.to_string(), "Syntax Error: unexpected character '@' at line 1, col 5");
+}

@@ -79,6 +79,24 @@ target_include_directories(querycraft_common PUBLIC
 querycraft_enable_warnings(querycraft_common)
 
 # -----------------------------------------------------------------------------
+# Parser Library: querycraft_parser
+# -----------------------------------------------------------------------------
+add_library(querycraft_parser STATIC
+    src/parser/lexer.cpp
+)
+
+target_include_directories(querycraft_parser PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+
+target_link_libraries(querycraft_parser PUBLIC
+    querycraft_common
+)
+
+querycraft_enable_warnings(querycraft_parser)
+
+# -----------------------------------------------------------------------------
 # Main Executable: querycraft (Interactive CLI Shell)
 # -----------------------------------------------------------------------------
 add_executable(querycraft
@@ -87,6 +105,7 @@ add_executable(querycraft
 
 target_link_libraries(querycraft PRIVATE
     querycraft_common
+    querycraft_parser
 )
 
 querycraft_enable_warnings(querycraft)
@@ -120,6 +139,7 @@ if(BUILD_TESTS)
     add_executable(querycraft_tests
         tests/common/status_test.cpp
         tests/common/shell_test.cpp
+        tests/parser/lexer_test.cpp
     )
 
     target_include_directories(querycraft_tests PRIVATE
@@ -128,6 +148,7 @@ if(BUILD_TESTS)
 
     target_link_libraries(querycraft_tests PRIVATE
         querycraft_common
+        querycraft_parser
         GTest::gtest_main
     )
 

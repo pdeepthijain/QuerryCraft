@@ -48,7 +48,9 @@ QueryCraft/
 ├── .gitignore                  # Git ignore rules for build artifacts & temp files
 ├── include/                    # Public C++ header files
 │   ├── common/                 # Engine constants, types, status codes, shell interface
-│   ├── parser/                 # SQL lexer and AST parser definitions (upcoming)
+│   ├── parser/                 # SQL Token & Lexer interfaces
+│   │   ├── token.hpp           # TokenType enum, SourceLocation, and Token class
+│   │   └── lexer.hpp           # Streaming Lexer tokenizer interface
 │   ├── storage/                # Disk manager, page layout, tuple serialization (upcoming)
 │   ├── index/                  # B+ Tree index structures (upcoming)
 │   ├── execution/              # Volcano iterator execution model (upcoming)
@@ -56,7 +58,8 @@ QueryCraft/
 │   └── buffer/                 # Buffer pool manager and frame eviction policies (upcoming)
 ├── src/                        # Implementation source files
 │   ├── common/                 # Common module implementations (e.g. Shell)
-│   ├── parser/                 # Parser source files (upcoming)
+│   ├── parser/                 # SQL Lexer implementation
+│   │   └── lexer.cpp           # Tokenizer state machine and keyword resolution
 │   ├── storage/                # Storage engine implementation (upcoming)
 │   ├── index/                  # B+ Tree implementation (upcoming)
 │   ├── execution/              # Execution operators implementation (upcoming)
@@ -64,7 +67,8 @@ QueryCraft/
 │   ├── buffer/                 # Buffer pool implementation (upcoming)
 │   └── main.cpp                # QueryCraft binary entry point
 ├── tests/                      # Automated test suite (GoogleTest)
-│   └── common/                 # Unit tests for common utilities and Shell
+│   ├── common/                 # Unit tests for common utilities and Shell
+│   └── parser/                 # Unit tests for SQL Tokenizer (Lexer)
 ├── benchmarks/                 # Performance and latency benchmarks
 ├── data/                       # Directory for database files (.db, .wal)
 └── docs/                       # Architecture diagrams and technical documentation
@@ -173,8 +177,8 @@ ctest --test-dir build --output-on-failure
 
 Expected output:
 ```
-[==========] Running 15 tests from 2 test suites.
-[  PASSED  ] 15 tests.
+[==========] Running 38 tests from 3 test suites.
+[  PASSED  ] 38 tests.
 ```
 
 ---
@@ -186,11 +190,12 @@ Expected output:
 | **Build System** | Completed | CMake C++20 configuration with compiler warnings, ASan toggle, and GoogleTest. |
 | **Interactive Shell** | Completed | Clean REPL shell handling input echoing, graceful empty input, `HELP`, `EXIT`, and `QUIT`. |
 | **Common Utilities** | Completed | Core types, engine parameters (`PAGE_SIZE = 4096`), and `Status` error reporting class. |
-| **Unit Test Suite** | Completed | 15 unit tests covering Shell parsing, trimming, lifecycle, and Status semantics. |
+| **SQL Lexer (Tokenizer)** | Completed | Complete tokenizer from scratch in C++20 supporting 34 keywords (case-insensitive), identifiers, integer/float/string literals, operators, comments (`--`), and syntax error reporting. |
+| **Unit Test Suite** | Completed | 38 unit tests covering Shell, Status, and full Lexer tokenization edge cases. |
+| **SQL Parser & AST** | Pending | Recursive-descent SQL statement parser producing AST nodes. |
 | **Disk Storage Manager** | Pending | Slotted-page architecture, block read/write. |
 | **Buffer Pool Manager** | Pending | Frame table, dirty tracking, LRU-K page eviction. |
 | **B+ Tree Index** | Pending | Dynamic balanced indexing for point queries and range scans. |
-| **SQL Parser & AST** | Pending | Tokenizer and recursive-descent SQL statement parser. |
 | **Execution Engine** | Pending | Volcano iterator model query execution. |
 
 ---

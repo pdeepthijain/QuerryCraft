@@ -13,7 +13,8 @@ enum class StatusCode : std::uint8_t {
     InvalidArgument,
     NotSupported,
     IoError,
-    InternalError
+    InternalError,
+    SyntaxError
 };
 
 class [[nodiscard]] Status {
@@ -49,6 +50,10 @@ public:
 
     static Status InternalError(std::string message) {
         return Status(StatusCode::InternalError, std::move(message));
+    }
+
+    static Status SyntaxError(std::string message) {
+        return Status(StatusCode::SyntaxError, std::move(message));
     }
 
     [[nodiscard]] bool ok() const noexcept {
@@ -92,6 +97,8 @@ private:
                 return "I/O Error";
             case StatusCode::InternalError:
                 return "Internal Error";
+            case StatusCode::SyntaxError:
+                return "Syntax Error";
             default:
                 return "Unknown Error";
         }
