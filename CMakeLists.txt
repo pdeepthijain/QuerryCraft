@@ -83,6 +83,8 @@ querycraft_enable_warnings(querycraft_common)
 # -----------------------------------------------------------------------------
 add_library(querycraft_parser STATIC
     src/parser/lexer.cpp
+    src/parser/ast.cpp
+    src/parser/parser.cpp
 )
 
 target_include_directories(querycraft_parser PUBLIC
@@ -140,6 +142,8 @@ if(BUILD_TESTS)
         tests/common/status_test.cpp
         tests/common/shell_test.cpp
         tests/parser/lexer_test.cpp
+        tests/parser/ast_test.cpp
+        tests/parser/parser_test.cpp
     )
 
     target_include_directories(querycraft_tests PRIVATE

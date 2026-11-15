@@ -65,13 +65,48 @@ QueryCraft is a modular relational database management system (RDBMS) engine eng
 
 ---
 
-## 3. Important Files (Foundation Phase)
+## 3. Important Files & Modules
 
+### Foundation & Common
 - **`CMakeLists.txt`**: Central CMake configuration. Configures C++20, rigorous compiler warnings (`-Wall -Wextra -Wpedantic`, etc.), GoogleTest integration via FetchContent, AddressSanitizer options (`ENABLE_ASAN`), and modular targets.
 - **`include/common/config.hpp`**: Engine-wide configuration constants including version, page size (`PAGE_SIZE = 4096`), sentinel values (`INVALID_PAGE_ID`, `INVALID_TXN_ID`), and type aliases (`page_id_t`, `txn_id_t`, `lsn_t`).
-- **`include/common/status.hpp`**: Robust `Status` class modeled after modern systems engines (LevelDB/DuckDB/BusTub), providing explicit error checking with `StatusCode` values and human-readable messages.
+- **`include/common/status.hpp`**: Robust `Status` class modeled after modern systems engines (LevelDB/DuckDB/BusTub), providing explicit error checking with `StatusCode` values (`Ok`, `NotFound`, `AlreadyExists`, `InvalidArgument`, `NotSupported`, `IoError`, `InternalError`, `SyntaxError`) and human-readable messages.
 - **`include/common/shell.hpp` & `src/common/shell.cpp`**: Interactive command-line REPL shell decoupled from the engine internals. Accepts streams (`std::istream`, `std::ostream`) for full unit testability.
 - **`src/main.cpp`**: QueryCraft binary entry point. Instantiates and executes the interactive shell with exception isolation.
+
+### SQL Lexer (Tokenizer)
+- **`include/parser/token.hpp`**: `TokenType` enum covering 34 keywords, literals, operators, and punctuation; `SourceLocation` coordinate tracking (`line`, `column`); and the immutable `Token` class.
+- **`include/parser/lexer.hpp` & `src/parser/lexer.cpp`**: State machine scanner supporting case-insensitive keyword lookup, arbitrary identifiers, integer/float literals, string escaping (`''`), `--` comments, and single-token lookahead (`peek_token()`).
+
+### SQL Parser & Abstract Syntax Tree (AST)
+- **`include/parser/ast.hpp` & `src/parser/ast.cpp`**:
+  - `AstNode`: Abstract base class with source coordinates and `to_string()`.
+  - `Expression`: Abstract base for expressions, supporting `clone()`.
+    - `LiteralExpression`: Polymorphic variant for INT, FLOAT, STRING, NULL, and BOOL.
+    - `ColumnRefExpression`: Column name with optional qualified table name.
+    - `BinaryExpression`: Arithmetic (`+`, `-`, `*`, `/`), Comparison (`=`, `!=`, `<`, `<=`, `>`, `>=`), and Logical (`AND`, `OR`).
+    - `UnaryExpression`: Unary operators (`+`, `-`, `NOT`).
+  - `Statement`: Base class for top-level DDL and DML operations.
+    - `SelectStatement`: Selected columns / `*`, FROM table, WHERE condition, ORDER BY (`ASC`/`DESC`), and LIMIT.
+    - `CreateTableStatement`: Column definitions (`INT`, `FLOAT`, `TEXT`, `VARCHAR`), column-level and table-level PRIMARY KEY constraints.
+    - `InsertStatement`: Target table, optional column list, and VALUES list.
+    - `UpdateStatement`: Target table, SET assignments (`col = expr`), and optional WHERE clause.
+    - `DeleteStatement`: Target table and optional WHERE clause.
+    - `CreateIndexStatement`: Index name, target table, and indexed column list.
+  - `ast_debug_print()`: Pretty tree debug printer with visual indentation for AST visualization.
+- **`include/parser/parser.hpp` & `src/parser/parser.cpp`**:
+  - Recursive-descent parser converting lexer tokens into strongly typed AST nodes.
+  - Stratified operator precedence hierarchy:
+    `Primary` -> `Unary` (`+`, `-`) -> `Multiplicative` (`*`, `/`) -> `Additive` (`+`, `-`) -> `Comparison` (`=`, `!=`, `<`, `<=`, `>`, `>=`) -> `Unary NOT` -> `Logical AND` -> `Logical OR`.
+  - Diagnostic error reporting with line/column coordinates via `Status::SyntaxError`.
+
+---
+
+## 4. Test Suites
+
 - **`tests/common/shell_test.cpp`**: GoogleTest suite verifying shell input trimming, case handling, lifecycle, command display, and termination.
 - **`tests/common/status_test.cpp`**: GoogleTest suite validating `Status` behavior across all status codes and messages.
-- **`.gitignore`**: Excludes build artifacts, binaries, temporary cache files, runtime database files, and local tooling.
+- **`tests/parser/lexer_test.cpp`**: 22 unit tests verifying token classification, numbers, comments, strings, operators, and coordinates.
+- **`tests/parser/ast_test.cpp`**: 14 unit tests verifying AST node creation, cloning, string formatting, and debug printing.
+- **`tests/parser/parser_test.cpp`**: 28 unit tests covering all statement types, expression precedence, parenthesization, and syntax error diagnostics.
+

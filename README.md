@@ -48,9 +48,11 @@ QueryCraft/
 ├── .gitignore                  # Git ignore rules for build artifacts & temp files
 ├── include/                    # Public C++ header files
 │   ├── common/                 # Engine constants, types, status codes, shell interface
-│   ├── parser/                 # SQL Token & Lexer interfaces
+│   ├── parser/                 # SQL Token, Lexer, and AST & Parser interfaces
 │   │   ├── token.hpp           # TokenType enum, SourceLocation, and Token class
-│   │   └── lexer.hpp           # Streaming Lexer tokenizer interface
+│   │   ├── lexer.hpp           # Streaming Lexer tokenizer interface
+│   │   ├── ast.hpp             # Abstract Syntax Tree hierarchy (Statements & Expressions)
+│   │   └── parser.hpp          # Recursive-descent SQL Parser interface
 │   ├── storage/                # Disk manager, page layout, tuple serialization (upcoming)
 │   ├── index/                  # B+ Tree index structures (upcoming)
 │   ├── execution/              # Volcano iterator execution model (upcoming)
@@ -58,8 +60,10 @@ QueryCraft/
 │   └── buffer/                 # Buffer pool manager and frame eviction policies (upcoming)
 ├── src/                        # Implementation source files
 │   ├── common/                 # Common module implementations (e.g. Shell)
-│   ├── parser/                 # SQL Lexer implementation
-│   │   └── lexer.cpp           # Tokenizer state machine and keyword resolution
+│   ├── parser/                 # SQL Lexer and Parser implementations
+│   │   ├── lexer.cpp           # Tokenizer state machine and keyword resolution
+│   │   ├── ast.cpp             # AST stringification and tree debug printer
+│   │   └── parser.cpp          # Recursive-descent parser & precedence hierarchy
 │   ├── storage/                # Storage engine implementation (upcoming)
 │   ├── index/                  # B+ Tree implementation (upcoming)
 │   ├── execution/              # Execution operators implementation (upcoming)
@@ -68,7 +72,10 @@ QueryCraft/
 │   └── main.cpp                # QueryCraft binary entry point
 ├── tests/                      # Automated test suite (GoogleTest)
 │   ├── common/                 # Unit tests for common utilities and Shell
-│   └── parser/                 # Unit tests for SQL Tokenizer (Lexer)
+│   └── parser/                 # Unit tests for Tokenizer, AST nodes, and Recursive-Descent Parser
+│       ├── lexer_test.cpp      # 22 tests for lexical analysis
+│       ├── ast_test.cpp        # 14 tests for AST nodes & debug printing
+│       └── parser_test.cpp     # 28 tests for syntax analysis & operator precedence
 ├── benchmarks/                 # Performance and latency benchmarks
 ├── data/                       # Directory for database files (.db, .wal)
 └── docs/                       # Architecture diagrams and technical documentation
@@ -177,8 +184,8 @@ ctest --test-dir build --output-on-failure
 
 Expected output:
 ```
-[==========] Running 38 tests from 3 test suites.
-[  PASSED  ] 38 tests.
+[==========] Running 80 tests from 5 test suites.
+[  PASSED  ] 80 tests.
 ```
 
 ---
@@ -191,8 +198,8 @@ Expected output:
 | **Interactive Shell** | Completed | Clean REPL shell handling input echoing, graceful empty input, `HELP`, `EXIT`, and `QUIT`. |
 | **Common Utilities** | Completed | Core types, engine parameters (`PAGE_SIZE = 4096`), and `Status` error reporting class. |
 | **SQL Lexer (Tokenizer)** | Completed | Complete tokenizer from scratch in C++20 supporting 34 keywords (case-insensitive), identifiers, integer/float/string literals, operators, comments (`--`), and syntax error reporting. |
-| **Unit Test Suite** | Completed | 38 unit tests covering Shell, Status, and full Lexer tokenization edge cases. |
-| **SQL Parser & AST** | Pending | Recursive-descent SQL statement parser producing AST nodes. |
+| **SQL Parser & AST** | Completed | Recursive-descent SQL parser supporting SELECT (*, projections, WHERE, ORDER BY, LIMIT), CREATE TABLE (with primary keys and data types), INSERT, UPDATE, DELETE, CREATE INDEX, expressions with operator precedence, and AST debug-tree printing. |
+| **Unit Test Suite** | Completed | 80 unit tests covering Shell, Status, Lexer tokenization, AST representations, and full recursive-descent parser grammar. |
 | **Disk Storage Manager** | Pending | Slotted-page architecture, block read/write. |
 | **Buffer Pool Manager** | Pending | Frame table, dirty tracking, LRU-K page eviction. |
 | **B+ Tree Index** | Pending | Dynamic balanced indexing for point queries and range scans. |
