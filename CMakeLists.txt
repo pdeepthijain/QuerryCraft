@@ -99,6 +99,29 @@ target_link_libraries(querycraft_parser PUBLIC
 querycraft_enable_warnings(querycraft_parser)
 
 # -----------------------------------------------------------------------------
+# Storage Library: querycraft_storage
+# -----------------------------------------------------------------------------
+add_library(querycraft_storage STATIC
+    src/storage/page.cpp
+    src/storage/schema.cpp
+    src/storage/record.cpp
+    src/storage/disk_manager.cpp
+    src/storage/table.cpp
+    src/storage/database.cpp
+)
+
+target_include_directories(querycraft_storage PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+
+target_link_libraries(querycraft_storage PUBLIC
+    querycraft_common
+)
+
+querycraft_enable_warnings(querycraft_storage)
+
+# -----------------------------------------------------------------------------
 # Main Executable: querycraft (Interactive CLI Shell)
 # -----------------------------------------------------------------------------
 add_executable(querycraft
@@ -108,6 +131,7 @@ add_executable(querycraft
 target_link_libraries(querycraft PRIVATE
     querycraft_common
     querycraft_parser
+    querycraft_storage
 )
 
 querycraft_enable_warnings(querycraft)
@@ -144,6 +168,10 @@ if(BUILD_TESTS)
         tests/parser/lexer_test.cpp
         tests/parser/ast_test.cpp
         tests/parser/parser_test.cpp
+        tests/storage/page_test.cpp
+        tests/storage/record_test.cpp
+        tests/storage/disk_manager_test.cpp
+        tests/storage/database_test.cpp
     )
 
     target_include_directories(querycraft_tests PRIVATE
@@ -153,6 +181,7 @@ if(BUILD_TESTS)
     target_link_libraries(querycraft_tests PRIVATE
         querycraft_common
         querycraft_parser
+        querycraft_storage
         GTest::gtest_main
     )
 

@@ -53,7 +53,13 @@ QueryCraft/
 │   │   ├── lexer.hpp           # Streaming Lexer tokenizer interface
 │   │   ├── ast.hpp             # Abstract Syntax Tree hierarchy (Statements & Expressions)
 │   │   └── parser.hpp          # Recursive-descent SQL Parser interface
-│   ├── storage/                # Disk manager, page layout, tuple serialization (upcoming)
+│   ├── storage/                # Disk manager, slotted-page, record & schema, catalog persistence
+│   │   ├── page.hpp            # 4KB Slotted-Page abstraction & compaction
+│   │   ├── schema.hpp          # Column types, constraints, and binary schema serialization
+│   │   ├── record.hpp          # Typed std::variant Value & row binary serialization
+│   │   ├── disk_manager.hpp    # Physical file block I/O & page allocation
+│   │   ├── table.hpp           # Slotted-page linked list table storage & CRUD operations
+│   │   └── database.hpp        # Multi-table management & Page 0 catalog persistence
 │   ├── index/                  # B+ Tree index structures (upcoming)
 │   ├── execution/              # Volcano iterator execution model (upcoming)
 │   ├── optimizer/              # Query plan representation and optimizer (upcoming)
@@ -64,7 +70,13 @@ QueryCraft/
 │   │   ├── lexer.cpp           # Tokenizer state machine and keyword resolution
 │   │   ├── ast.cpp             # AST stringification and tree debug printer
 │   │   └── parser.cpp          # Recursive-descent parser & precedence hierarchy
-│   ├── storage/                # Storage engine implementation (upcoming)
+│   ├── storage/                # Storage engine implementation
+│   │   ├── page.cpp            # Slotted-page slot directory and defragmentation
+│   │   ├── schema.cpp          # Schema serialization & deserialization
+│   │   ├── record.cpp          # Record validation and type-tagged binary serialization
+│   │   ├── disk_manager.cpp    # Physical 4096-byte page reads, writes, and allocation
+│   │   ├── table.cpp           # Slotted-page chain traversal and table CRUD
+│   │   └── database.cpp        # Page 0 catalog management and recovery across restarts
 │   ├── index/                  # B+ Tree implementation (upcoming)
 │   ├── execution/              # Execution operators implementation (upcoming)
 │   ├── optimizer/              # Plan nodes and optimizer passes (upcoming)
@@ -72,10 +84,15 @@ QueryCraft/
 │   └── main.cpp                # QueryCraft binary entry point
 ├── tests/                      # Automated test suite (GoogleTest)
 │   ├── common/                 # Unit tests for common utilities and Shell
-│   └── parser/                 # Unit tests for Tokenizer, AST nodes, and Recursive-Descent Parser
-│       ├── lexer_test.cpp      # 22 tests for lexical analysis
-│       ├── ast_test.cpp        # 14 tests for AST nodes & debug printing
-│       └── parser_test.cpp     # 28 tests for syntax analysis & operator precedence
+│   ├── parser/                 # Unit tests for Tokenizer, AST nodes, and Recursive-Descent Parser
+│   │   ├── lexer_test.cpp      # 22 tests for lexical analysis
+│   │   ├── ast_test.cpp        # 14 tests for AST nodes & debug printing
+│   │   └── parser_test.cpp     # 28 tests for syntax analysis & operator precedence
+│   └── storage/                # Unit tests for persistent storage engine
+│       ├── page_test.cpp       # 9 tests for 4KB page bounds, slotted ops, and compaction
+│       ├── record_test.cpp     # 11 tests for Value variants, type serialization, and schema validation
+│       ├── disk_manager_test.cpp # 6 tests for file I/O, page allocation, and persistence
+│       └── database_test.cpp   # 8 tests for table creation, CRUD, and restart recovery
 ├── benchmarks/                 # Performance and latency benchmarks
 ├── data/                       # Directory for database files (.db, .wal)
 └── docs/                       # Architecture diagrams and technical documentation
@@ -184,8 +201,8 @@ ctest --test-dir build --output-on-failure
 
 Expected output:
 ```
-[==========] Running 80 tests from 5 test suites.
-[  PASSED  ] 80 tests.
+[==========] Running 114 tests from 9 test suites.
+[  PASSED  ] 114 tests.
 ```
 
 ---
@@ -199,8 +216,11 @@ Expected output:
 | **Common Utilities** | Completed | Core types, engine parameters (`PAGE_SIZE = 4096`), and `Status` error reporting class. |
 | **SQL Lexer (Tokenizer)** | Completed | Complete tokenizer from scratch in C++20 supporting 34 keywords (case-insensitive), identifiers, integer/float/string literals, operators, comments (`--`), and syntax error reporting. |
 | **SQL Parser & AST** | Completed | Recursive-descent SQL parser supporting SELECT (*, projections, WHERE, ORDER BY, LIMIT), CREATE TABLE (with primary keys and data types), INSERT, UPDATE, DELETE, CREATE INDEX, expressions with operator precedence, and AST debug-tree printing. |
-| **Unit Test Suite** | Completed | 80 unit tests covering Shell, Status, Lexer tokenization, AST representations, and full recursive-descent parser grammar. |
-| **Disk Storage Manager** | Pending | Slotted-page architecture, block read/write. |
+| **Disk Storage Manager** | Completed | Physical 4096-byte block file operations, page allocation, and boundary checks via `DiskManager`. |
+| **Slotted-Page Architecture** | Completed | 4KB page layout with 20-byte header, slot directory, downward-growing variable-length records, free space tracking, and compaction. |
+| **Schema & Record Management** | Completed | Schema definition with INT, FLOAT, TEXT, VARCHAR, nullability, primary key constraints, and type-tagged binary serialization. |
+| **Catalog & Persistence** | Completed | Multi-table management via `Database` and `Table`, Page 0 catalog persistence, and full schema/record recovery across restarts. |
+| **Unit Test Suite** | Completed | 114 unit tests covering Shell, Status, Lexer, AST, Parser, Page, Record, DiskManager, and Database. |
 | **Buffer Pool Manager** | Pending | Frame table, dirty tracking, LRU-K page eviction. |
 | **B+ Tree Index** | Pending | Dynamic balanced indexing for point queries and range scans. |
 | **Execution Engine** | Pending | Volcano iterator model query execution. |

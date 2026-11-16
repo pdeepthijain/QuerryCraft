@@ -100,6 +100,43 @@ QueryCraft is a modular relational database management system (RDBMS) engine eng
     `Primary` -> `Unary` (`+`, `-`) -> `Multiplicative` (`*`, `/`) -> `Additive` (`+`, `-`) -> `Comparison` (`=`, `!=`, `<`, `<=`, `>`, `>=`) -> `Unary NOT` -> `Logical AND` -> `Logical OR`.
   - Diagnostic error reporting with line/column coordinates via `Status::SyntaxError`.
 
+### Persistent Storage Engine
+- **`include/storage/page.hpp` & `src/storage/page.cpp`**:
+  - Fixed-size 4096-byte page abstraction with boundary-checked accessors (`read_bytes()`, `write_bytes()`).
+  - Fixed 20-byte header:
+    - `[0..3]`: `page_id` (`int32_t`)
+    - `[4..5]`: `page_type` (`uint16_t`: `FREE_PAGE=0`, `CATALOG_PAGE=1`, `TABLE_DATA_PAGE=2`)
+    - `[6..7]`: `num_slots` (`uint16_t`)
+    - `[8..9]`: `free_space_pointer` (`uint16_t`, starts at 4096 and grows downwards)
+    - `[10..13]`: `prev_page_id` (`int32_t`)
+    - `[14..17]`: `next_page_id` (`int32_t`)
+    - `[18..19]`: `flags` (`uint16_t`)
+  - Slotted-page layout: Slot directory begins at offset 20 (`offset: uint16_t, length: uint16_t`, 4 bytes per slot). Record bytes grow from offset 4096 backwards towards the directory.
+  - Slot reuse for deleted records (`offset=0, length=0`), full page rejection without corruption, and `compact()` defragmentation algorithm.
+- **`include/storage/schema.hpp` & `src/storage/schema.cpp`**:
+  - Column definitions (`name`, `DataType` (`INT`, `FLOAT`, `TEXT`, `VARCHAR`), `is_primary_key`, `is_nullable`, `length`).
+  - Schema binary serialization and deserialization for catalog persistence.
+  - Independent of SQL parsing layer.
+- **`include/storage/record.hpp` & `src/storage/record.cpp`**:
+  - `Value`: `std::variant<std::monostate, int64_t, double, std::string>` representing NULL, INT, FLOAT, and TEXT/VARCHAR.
+  - `Record`: Vector of `Value` objects indexed by schema columns, with `RecordId {page_id, slot_id}`.
+  - Schema constraint validation (`validate(schema)` checking types, nullability, primary key constraints, and VARCHAR lengths).
+  - Robust binary serialization protocol: 2-byte value count, type tags (`0=NULL`, `1=INT [8B]`, `2=FLOAT [8B]`, `3=STRING [4B len + chars]`).
+- **`include/storage/disk_manager.hpp` & `src/storage/disk_manager.cpp`**:
+  - Low-level physical file I/O operations for binary database files in `data/`.
+  - Fixed 4096-byte page read/write (`read_page()`, `write_page()`), page allocation (`allocate_page()`), file sizing, and `flush()`.
+- **`include/storage/table.hpp` & `src/storage/table.cpp`**:
+  - Doubly-linked chain of slotted data pages (`first_page_id`, `last_page_id`).
+  - CRUD operations: `insert_record` (auto-allocating chained pages when full), `get_record`, `update_record` (in-place or reallocated), `delete_record`, and full sequential `scan_records`.
+- **`include/storage/database.hpp` & `src/storage/database.cpp`**:
+  - Central multi-table manager and catalog engine.
+  - **Catalog Page (Page 0)** binary structure:
+    - `[0..3]`: Magic signature `0x51435246` (`"QCRF"`)
+    - `[4..5]`: Catalog version `1`
+    - `[6..7]`: Table count
+    - Table directory: table names, page chains (`first_page_id`, `last_page_id`), and serialized `Schema` binary representations.
+  - Automatic catalog persistence on modifications and recovery across application restarts.
+
 ---
 
 ## 4. Test Suites
@@ -109,4 +146,8 @@ QueryCraft is a modular relational database management system (RDBMS) engine eng
 - **`tests/parser/lexer_test.cpp`**: 22 unit tests verifying token classification, numbers, comments, strings, operators, and coordinates.
 - **`tests/parser/ast_test.cpp`**: 14 unit tests verifying AST node creation, cloning, string formatting, and debug printing.
 - **`tests/parser/parser_test.cpp`**: 28 unit tests covering all statement types, expression precedence, parenthesization, and syntax error diagnostics.
+- **`tests/storage/page_test.cpp`**: 9 unit tests verifying 4096-byte page size, boundary checks, slotted inserts/reads, deleted slot reuse, compaction, and full-page rejection.
+- **`tests/storage/record_test.cpp`**: 11 unit tests verifying `Value` variants, integer/float/string/NULL binary serialization, and schema constraint validation.
+- **`tests/storage/disk_manager_test.cpp`**: 6 unit tests verifying database file creation, page allocation, reading/writing pages, persistence across instances, and boundary conditions.
+- **`tests/storage/database_test.cpp`**: 8 unit tests verifying table creation, duplicate rejection, CRUD record operations, full multi-page scans, and catalog/schema/record persistence across application restarts.
 
