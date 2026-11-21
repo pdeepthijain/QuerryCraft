@@ -60,7 +60,11 @@ QueryCraft/
 │   │   ├── disk_manager.hpp    # Physical file block I/O & page allocation
 │   │   ├── table.hpp           # Slotted-page linked list table storage & CRUD operations
 │   │   └── database.hpp        # Multi-table management & Page 0 catalog persistence
-│   ├── index/                  # B+ Tree index structures (upcoming)
+│   ├── index/                  # B+ Tree indexing module & index management
+│   │   ├── index_key.hpp       # Type-safe INT/FLOAT/TEXT IndexKey with ordering & serialization
+│   │   ├── bplus_tree_node.hpp # B+ Tree internal and leaf node representation & page binary encoding
+│   │   ├── bplus_tree.hpp      # Disk-aware B+ Tree implementation (insert, delete, range search)
+│   │   └── index_manager.hpp   # Index metadata, table column indexing, and persistent catalog
 │   ├── execution/              # Volcano iterator execution model (upcoming)
 │   ├── optimizer/              # Query plan representation and optimizer (upcoming)
 │   └── buffer/                 # Buffer pool manager and frame eviction policies (upcoming)
@@ -77,7 +81,11 @@ QueryCraft/
 │   │   ├── disk_manager.cpp    # Physical 4096-byte page reads, writes, and allocation
 │   │   ├── table.cpp           # Slotted-page chain traversal and table CRUD
 │   │   └── database.cpp        # Page 0 catalog management and recovery across restarts
-│   ├── index/                  # B+ Tree implementation (upcoming)
+│   ├── index/                  # B+ Tree indexing implementation
+│   │   ├── index_key.cpp       # Key comparison, type checking, and binary serialization
+│   │   ├── bplus_tree_node.cpp # Leaf & internal node splitting, borrowing, and 4KB page serialization
+│   │   ├── bplus_tree.cpp      # B+ Tree algorithms, merge/redistribute, validator, and disk persistence
+│   │   └── index_manager.cpp   # Multi-index catalog management, lookup, and disk persistence
 │   ├── execution/              # Execution operators implementation (upcoming)
 │   ├── optimizer/              # Plan nodes and optimizer passes (upcoming)
 │   ├── buffer/                 # Buffer pool implementation (upcoming)
@@ -88,11 +96,14 @@ QueryCraft/
 │   │   ├── lexer_test.cpp      # 22 tests for lexical analysis
 │   │   ├── ast_test.cpp        # 14 tests for AST nodes & debug printing
 │   │   └── parser_test.cpp     # 28 tests for syntax analysis & operator precedence
-│   └── storage/                # Unit tests for persistent storage engine
-│       ├── page_test.cpp       # 9 tests for 4KB page bounds, slotted ops, and compaction
-│       ├── record_test.cpp     # 11 tests for Value variants, type serialization, and schema validation
-│       ├── disk_manager_test.cpp # 6 tests for file I/O, page allocation, and persistence
-│       └── database_test.cpp   # 8 tests for table creation, CRUD, and restart recovery
+│   ├── storage/                # Unit tests for persistent storage engine
+│   │   ├── page_test.cpp       # 9 tests for 4KB page bounds, slotted ops, and compaction
+│   │   ├── record_test.cpp     # 11 tests for Value variants, type serialization, and schema validation
+│   │   ├── disk_manager_test.cpp # 6 tests for file I/O, page allocation, and persistence
+│   │   └── database_test.cpp   # 8 tests for table creation, CRUD, and restart recovery
+│   └── index/                  # Unit tests for B+ Tree indexing engine
+│       ├── bplus_tree_test.cpp # 9 tests for B+ Tree splits, merges, duplicates, range, validator & stress
+│       └── index_manager_test.cpp # 6 tests for index manager CRUD, types, and session restart persistence
 ├── benchmarks/                 # Performance and latency benchmarks
 ├── data/                       # Directory for database files (.db, .wal)
 └── docs/                       # Architecture diagrams and technical documentation
@@ -201,8 +212,8 @@ ctest --test-dir build --output-on-failure
 
 Expected output:
 ```
-[==========] Running 114 tests from 9 test suites.
-[  PASSED  ] 114 tests.
+[==========] Running 129 tests from 11 test suites.
+[  PASSED  ] 129 tests.
 ```
 
 ---
@@ -220,9 +231,10 @@ Expected output:
 | **Slotted-Page Architecture** | Completed | 4KB page layout with 20-byte header, slot directory, downward-growing variable-length records, free space tracking, and compaction. |
 | **Schema & Record Management** | Completed | Schema definition with INT, FLOAT, TEXT, VARCHAR, nullability, primary key constraints, and type-tagged binary serialization. |
 | **Catalog & Persistence** | Completed | Multi-table management via `Database` and `Table`, Page 0 catalog persistence, and full schema/record recovery across restarts. |
-| **Unit Test Suite** | Completed | 114 unit tests covering Shell, Status, Lexer, AST, Parser, Page, Record, DiskManager, and Database. |
+| **B+ Tree Indexing** | Completed | Disk-aware B+ Tree from scratch in C++20 mapping `IndexKey` to `RecordId`s, supporting inserts, node splits, deletions, borrowing, merging, root shrinking, duplicate keys, range queries, tree validator, and 4KB page persistence via `DiskManager`. |
+| **Index Manager** | Completed | Column-level index management, type validation, index metadata catalog, and restart recovery across sessions. |
+| **Unit Test Suite** | Completed | 129 unit tests covering Shell, Status, Lexer, AST, Parser, Page, Record, DiskManager, Database, B+ Tree, and IndexManager. |
 | **Buffer Pool Manager** | Pending | Frame table, dirty tracking, LRU-K page eviction. |
-| **B+ Tree Index** | Pending | Dynamic balanced indexing for point queries and range scans. |
 | **Execution Engine** | Pending | Volcano iterator model query execution. |
 
 ---

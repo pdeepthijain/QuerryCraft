@@ -137,6 +137,34 @@ QueryCraft is a modular relational database management system (RDBMS) engine eng
     - Table directory: table names, page chains (`first_page_id`, `last_page_id`), and serialized `Schema` binary representations.
   - Automatic catalog persistence on modifications and recovery across application restarts.
 
+### B+ Tree Indexing Module
+- **`include/index/index_key.hpp` & `src/index/index_key.cpp`**:
+  - Strongly-typed `IndexKey` representing `INT` (`int64_t`), `FLOAT` (`double`), and `TEXT` (`std::string`).
+  - Type-safe comparison: consistent equality, total ordering, and rejection of cross-type comparisons (`std::invalid_argument`).
+  - Explicit `NULL` handling: `NULL` keys sort strictly before all non-null values (`NULLS FIRST`), adhering to relational semantics.
+  - Type-tagged binary serialization into byte buffers and disk pages.
+- **`include/index/bplus_tree_node.hpp` & `src/index/bplus_tree_node.cpp`**:
+  - `BPlusTreeNode` with configurable degree (`max_keys`, default 4 for testing, configurable per index).
+  - Leaf Nodes: sorted distinct keys, each mapping to a `std::vector<storage::RecordId>` to store duplicates without key duplication. Linked sequentially via `next_leaf` and `prev_leaf`.
+  - Internal Nodes: $K$ separator keys and $K+1$ child pointers / child page IDs.
+  - Binary 4KB page serialization (`INDEX_PAGE = 3`): header with node flags, parent PID, leaf links, and serialized key/rid payload.
+- **`include/index/bplus_tree.hpp` & `src/index/bplus_tree.cpp`**:
+  - Self-balancing search tree with $O(\log N)$ point lookups, insertions, and deletions.
+  - Node Splitting: leaf split pushes up first key of right leaf; internal split pushes median key up to parent; root splits increase tree height by 1.
+  - Node Underflow & Deletion: borrows from left sibling or right sibling; if siblings cannot lend, merges with sibling through parent separator; root shrinks when internal root becomes empty, decreasing tree height by 1.
+  - Range Search: locates lower bound in $O(\log N)$ and traverses doubly-linked leaf nodes until upper bound is exceeded.
+  - Debug Tree Invariant Validator (`validate_tree()`): asserts strictly sorted keys, child separator bounds, identical leaf depths, leaf link consistency, and minimum node occupancies.
+  - Disk Persistence: serializes nodes into 4KB pages via `DiskManager` and reconstructs trees upon reload.
+- **`include/index/index_manager.hpp` & `src/index/index_manager.cpp`**:
+  - Manages column-level B+ Tree indexes for database tables.
+  - Enforces key type matching on insertions and deletions.
+  - **Index Catalog Page** binary format:
+    - `[0..3]`: Magic signature `0x51434958` (`"QCIX"`)
+    - `[4..5]`: Index catalog version `1`
+    - `[6..7]`: Number of indexes
+    - Index Directory: index name, table name, column name, key type, root page ID, and max keys.
+  - Full persistence and recovery of all table indexes across database restart sessions.
+
 ---
 
 ## 4. Test Suites
@@ -150,4 +178,6 @@ QueryCraft is a modular relational database management system (RDBMS) engine eng
 - **`tests/storage/record_test.cpp`**: 11 unit tests verifying `Value` variants, integer/float/string/NULL binary serialization, and schema constraint validation.
 - **`tests/storage/disk_manager_test.cpp`**: 6 unit tests verifying database file creation, page allocation, reading/writing pages, persistence across instances, and boundary conditions.
 - **`tests/storage/database_test.cpp`**: 8 unit tests verifying table creation, duplicate rejection, CRUD record operations, full multi-page scans, and catalog/schema/record persistence across application restarts.
+- **`tests/index/bplus_tree_test.cpp`**: 9 unit tests verifying point search, sorted/reverse insertions, duplicate key handling, leaf/internal splits, leaf/internal merges, leaf borrowing, root shrinking, range queries, float/text/NULL types, randomized stress testing vs `std::map` reference model, tree invariant validation, and disk persistence.
+- **`tests/index/index_manager_test.cpp`**: 6 unit tests verifying index creation, duplicate name/column rejection, CRUD entries, type mismatch validation, index dropping, and multi-index catalog persistence across restart sessions.
 

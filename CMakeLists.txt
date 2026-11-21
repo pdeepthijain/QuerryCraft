@@ -122,6 +122,28 @@ target_link_libraries(querycraft_storage PUBLIC
 querycraft_enable_warnings(querycraft_storage)
 
 # -----------------------------------------------------------------------------
+# Index Library: querycraft_index
+# -----------------------------------------------------------------------------
+add_library(querycraft_index STATIC
+    src/index/index_key.cpp
+    src/index/bplus_tree_node.cpp
+    src/index/bplus_tree.cpp
+    src/index/index_manager.cpp
+)
+
+target_include_directories(querycraft_index PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+
+target_link_libraries(querycraft_index PUBLIC
+    querycraft_common
+    querycraft_storage
+)
+
+querycraft_enable_warnings(querycraft_index)
+
+# -----------------------------------------------------------------------------
 # Main Executable: querycraft (Interactive CLI Shell)
 # -----------------------------------------------------------------------------
 add_executable(querycraft
@@ -132,6 +154,7 @@ target_link_libraries(querycraft PRIVATE
     querycraft_common
     querycraft_parser
     querycraft_storage
+    querycraft_index
 )
 
 querycraft_enable_warnings(querycraft)
@@ -172,6 +195,8 @@ if(BUILD_TESTS)
         tests/storage/record_test.cpp
         tests/storage/disk_manager_test.cpp
         tests/storage/database_test.cpp
+        tests/index/bplus_tree_test.cpp
+        tests/index/index_manager_test.cpp
     )
 
     target_include_directories(querycraft_tests PRIVATE
@@ -182,6 +207,7 @@ if(BUILD_TESTS)
         querycraft_common
         querycraft_parser
         querycraft_storage
+        querycraft_index
         GTest::gtest_main
     )
 

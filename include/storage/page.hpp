@@ -27,7 +27,8 @@ struct RecordId {
 enum class PageType : std::uint16_t {
     FREE_PAGE = 0,
     CATALOG_PAGE = 1,
-    TABLE_DATA_PAGE = 2
+    TABLE_DATA_PAGE = 2,
+    INDEX_PAGE = 3
 };
 
 // Fixed Header layout constants (20 bytes total)
