@@ -165,6 +165,36 @@ target_link_libraries(querycraft_index PUBLIC
 querycraft_enable_warnings(querycraft_index)
 
 # -----------------------------------------------------------------------------
+# Execution Library: querycraft_execution
+# -----------------------------------------------------------------------------
+add_library(querycraft_execution STATIC
+    src/execution/execution_result.cpp
+    src/execution/expression_evaluator.cpp
+    src/execution/create_table_executor.cpp
+    src/execution/insert_executor.cpp
+    src/execution/select_executor.cpp
+    src/execution/update_executor.cpp
+    src/execution/delete_executor.cpp
+    src/execution/create_index_executor.cpp
+    src/execution/execution_engine.cpp
+)
+
+target_include_directories(querycraft_execution PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+
+target_link_libraries(querycraft_execution PUBLIC
+    querycraft_common
+    querycraft_parser
+    querycraft_storage
+    querycraft_buffer
+    querycraft_index
+)
+
+querycraft_enable_warnings(querycraft_execution)
+
+# -----------------------------------------------------------------------------
 # Main Executable: querycraft (Interactive CLI Shell)
 # -----------------------------------------------------------------------------
 add_executable(querycraft
@@ -172,11 +202,12 @@ add_executable(querycraft
 )
 
 target_link_libraries(querycraft PRIVATE
-    querycraft_common
-    querycraft_parser
-    querycraft_storage
-    querycraft_buffer
+    querycraft_execution
     querycraft_index
+    querycraft_buffer
+    querycraft_storage
+    querycraft_parser
+    querycraft_common
 )
 
 querycraft_enable_warnings(querycraft)
@@ -221,6 +252,9 @@ if(BUILD_TESTS)
         tests/buffer/buffer_pool_manager_test.cpp
         tests/index/bplus_tree_test.cpp
         tests/index/index_manager_test.cpp
+        tests/execution/expression_evaluator_test.cpp
+        tests/execution/execution_engine_test.cpp
+        tests/execution/shell_execution_test.cpp
     )
 
     target_include_directories(querycraft_tests PRIVATE
@@ -228,11 +262,12 @@ if(BUILD_TESTS)
     )
 
     target_link_libraries(querycraft_tests PRIVATE
-        querycraft_common
-        querycraft_parser
-        querycraft_storage
-        querycraft_buffer
+        querycraft_execution
         querycraft_index
+        querycraft_buffer
+        querycraft_storage
+        querycraft_parser
+        querycraft_common
         GTest::gtest_main
     )
 

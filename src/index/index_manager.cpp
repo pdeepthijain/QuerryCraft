@@ -393,6 +393,28 @@ common::Status IndexManager::load(page_id_t catalog_pid) {
     return common::Status::Ok();
 }
 
+common::Status IndexManager::auto_load() {
+    if (!disk_manager_.is_open()) {
+        return common::Status::IoError("DiskManager is not open");
+    }
+
+    const auto total = disk_manager_.num_pages();
+    for (page_id_t p = 1; p < static_cast<page_id_t>(total); ++p) {
+        storage::Page page;
+        if (disk_manager_.read_page(p, page).ok()) {
+            std::uint32_t magic = 0;
+            std::memcpy(&magic, page.data(), sizeof(magic));
+            if (magic == INDEX_CATALOG_MAGIC) {
+                return load(p);
+            }
+        }
+    }
+
+    indexes_.clear();
+    catalog_page_id_ = INVALID_PAGE_ID;
+    return common::Status::Ok();
+}
+
 common::Status IndexManager::persist(buffer::BufferPoolManager& bpm, page_id_t& out_catalog_pid) {
     if (!bpm.disk_manager().is_open()) {
         return common::Status::IoError("DiskManager is not open");

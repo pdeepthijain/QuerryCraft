@@ -79,6 +79,7 @@ public:
     // Persistence across application restarts
     common::Status persist(page_id_t& out_catalog_pid);
     common::Status load(page_id_t catalog_pid);
+    common::Status auto_load();
     common::Status persist(buffer::BufferPoolManager& bpm, page_id_t& out_catalog_pid);
     common::Status load(buffer::BufferPoolManager& bpm, page_id_t catalog_pid);
     [[nodiscard]] page_id_t catalog_page_id() const noexcept { return catalog_page_id_; }

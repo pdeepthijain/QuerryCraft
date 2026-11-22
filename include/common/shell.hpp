@@ -4,6 +4,10 @@
 #include <string>
 #include <string_view>
 
+namespace querycraft::execution {
+class ExecutionEngine;
+}
+
 namespace querycraft::common {
 
 enum class ShellAction {
@@ -13,7 +17,9 @@ enum class ShellAction {
 
 class Shell {
 public:
-    explicit Shell(std::istream& in, std::ostream& out, std::ostream& err);
+    explicit Shell(std::istream& in, std::ostream& out, std::ostream& err,
+                   execution::ExecutionEngine* engine = nullptr);
+    explicit Shell(execution::ExecutionEngine* engine);
     Shell(); // Defaults to std::cin, std::cout, std::cerr
 
     ~Shell() = default;
@@ -44,6 +50,7 @@ private:
     std::istream& in_;
     std::ostream& out_;
     std::ostream& err_;
+    execution::ExecutionEngine* engine_{nullptr};
     bool is_running_{false};
 };
 

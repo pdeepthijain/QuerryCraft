@@ -65,7 +65,18 @@ QueryCraft/
 │   │   ├── bplus_tree_node.hpp # B+ Tree internal and leaf node representation & page binary encoding
 │   │   ├── bplus_tree.hpp      # Disk-aware B+ Tree implementation (insert, delete, range search)
 │   │   └── index_manager.hpp   # Index metadata, table column indexing, and persistent catalog
-│   ├── execution/              # Volcano iterator execution model (upcoming)
+│   ├── execution/              # SQL execution engine and statement executors
+│   │   ├── execution_context.hpp # Runtime context holding Database, IndexManager, and BPM
+│   │   ├── execution_result.hpp  # Structured results, affected rows, and tabular ASCII formatting
+│   │   ├── expression_evaluator.hpp # Expression evaluation engine (literals, arithmetic, comparison, logic)
+│   │   ├── executor.hpp        # Abstract base Executor interface
+│   │   ├── create_table_executor.hpp # DDL table creation and schema validation
+│   │   ├── insert_executor.hpp # DML row insertion and index maintenance
+│   │   ├── select_executor.hpp # DQL sequential table scan, projection, and WHERE filtering
+│   │   ├── update_executor.hpp # DML in-place record updates and index synchronization
+│   │   ├── delete_executor.hpp # DML record deletion and index cleanup
+│   │   ├── create_index_executor.hpp # DDL B+ Tree index creation and record population
+│   │   └── execution_engine.hpp # Top-level SQL statement execution orchestrator
 │   ├── optimizer/              # Query plan representation and optimizer (upcoming)
 │   └── buffer/                 # Buffer pool manager and LRU frame eviction policy
 │       ├── lru_replacer.hpp    # O(1) LRU eviction tracking
@@ -91,7 +102,16 @@ QueryCraft/
 │   ├── buffer/                 # Buffer pool manager implementation
 │   │   ├── lru_replacer.cpp    # O(1) double-linked list & hash map LRU replacer
 │   │   └── buffer_pool_manager.cpp # Frame allocation, caching, page table, and eviction
-│   ├── execution/              # Execution operators implementation (upcoming)
+│   ├── execution/              # Execution engine implementations
+│   │   ├── execution_result.cpp # Result representation and tabular ASCII formatting
+│   │   ├── expression_evaluator.cpp # Dynamic SQL expression evaluation & SQL NULL 3-valued logic
+│   │   ├── create_table_executor.cpp # CREATE TABLE executor
+│   │   ├── insert_executor.cpp # INSERT executor with index synchronization
+│   │   ├── select_executor.cpp # SELECT executor with scan, filter, and projections
+│   │   ├── update_executor.cpp # UPDATE executor with WHERE filter and index synchronization
+│   │   ├── delete_executor.cpp # DELETE executor with index cleanup
+│   │   ├── create_index_executor.cpp # CREATE INDEX executor with B+ Tree population
+│   │   └── execution_engine.cpp # Orchestrator mapping AST to executors
 │   ├── optimizer/              # Plan nodes and optimizer passes (upcoming)
 │   └── main.cpp                # QueryCraft binary entry point
 ├── tests/                      # Automated test suite (GoogleTest)
@@ -108,9 +128,13 @@ QueryCraft/
 │   ├── buffer/                 # Unit tests for Buffer Pool Manager & LRU Replacer
 │   │   ├── lru_replacer_test.cpp # 8 tests for LRU victim order, pin constraints, size, and capacity
 │   │   └── buffer_pool_manager_test.cpp # 18 tests for fetch, unpin, dirty flush, small pool eviction, B+ Tree integration, restart recovery
-│   └── index/                  # Unit tests for B+ Tree indexing engine
-│       ├── bplus_tree_test.cpp # 9 tests for B+ Tree splits, merges, duplicates, range, validator & stress
-│       └── index_manager_test.cpp # 6 tests for index manager CRUD, types, and session restart persistence
+│   ├── index/                  # Unit tests for B+ Tree indexing engine
+│   │   ├── bplus_tree_test.cpp # 9 tests for B+ Tree splits, merges, duplicates, range, validator & stress
+│   │   └── index_manager_test.cpp # 6 tests for index manager CRUD, types, and session restart persistence
+│   └── execution/              # Unit & Integration tests for SQL execution engine
+│       ├── expression_evaluator_test.cpp # 7 tests for literals, arithmetic, comparisons, logic, NULL, and predicates
+│       ├── execution_engine_test.cpp # 8 tests for DDL, DML, CRUD, index synchronization, and session recovery
+│       └── shell_execution_test.cpp # 2 tests for interactive CLI workflows and error reporting
 ├── benchmarks/                 # Performance and latency benchmarks
 ├── data/                       # Directory for database files (.db, .wal)
 └── docs/                       # Architecture diagrams and technical documentation
@@ -219,8 +243,8 @@ ctest --test-dir build --output-on-failure
 
 Expected output:
 ```
-[==========] Running 155 tests from 13 test suites.
-[  PASSED  ] 155 tests.
+[==========] Running 172 tests from 16 test suites.
+[  PASSED  ] 172 tests.
 ```
 
 ---
@@ -230,7 +254,7 @@ Expected output:
 | Component | Status | Details |
 | :--- | :--- | :--- |
 | **Build System** | Completed | CMake C++20 configuration with compiler warnings, ASan toggle, and GoogleTest. |
-| **Interactive Shell** | Completed | Clean REPL shell handling input echoing, graceful empty input, `HELP`, `EXIT`, and `QUIT`. |
+| **Interactive Shell** | Completed | Full-featured REPL shell executing actual SQL statements against persistent storage with pretty ASCII table formatting, input echoing, `HELP`, `EXIT`, and `QUIT`. |
 | **Common Utilities** | Completed | Core types, engine parameters (`PAGE_SIZE = 4096`), and `Status` error reporting class. |
 | **SQL Lexer (Tokenizer)** | Completed | Complete tokenizer from scratch in C++20 supporting 34 keywords (case-insensitive), identifiers, integer/float/string literals, operators, comments (`--`), and syntax error reporting. |
 | **SQL Parser & AST** | Completed | Recursive-descent SQL parser supporting SELECT (*, projections, WHERE, ORDER BY, LIMIT), CREATE TABLE (with primary keys and data types), INSERT, UPDATE, DELETE, CREATE INDEX, expressions with operator precedence, and AST debug-tree printing. |
@@ -239,10 +263,11 @@ Expected output:
 | **Schema & Record Management** | Completed | Schema definition with INT, FLOAT, TEXT, VARCHAR, nullability, primary key constraints, and type-tagged binary serialization. |
 | **Catalog & Persistence** | Completed | Multi-table management via `Database` and `Table`, Page 0 catalog persistence, and full schema/record recovery across restarts. |
 | **B+ Tree Indexing** | Completed | Disk-aware B+ Tree from scratch in C++20 mapping `IndexKey` to `RecordId`s, supporting inserts, node splits, deletions, borrowing, merging, root shrinking, duplicate keys, range queries, tree validator, and 4KB page persistence via `DiskManager` and `BufferPoolManager`. |
-| **Index Manager** | Completed | Column-level index management, type validation, index metadata catalog, and restart recovery across sessions. |
+| **Index Manager** | Completed | Column-level index management, type validation, index metadata catalog, auto-discovery of index catalog page, and restart recovery across sessions. |
 | **Buffer Pool Manager** | Completed | In-memory 4KB page caching with frame table, dirty page tracking, page pinning/unpinning, and LRU page replacement via `LRUReplacer` ($O(1)$ ops). Integrated with B+ Tree and restart recovery. |
-| **Unit Test Suite** | Completed | 155 unit tests covering Shell, Status, Lexer, AST, Parser, Page, Record, DiskManager, Database, B+ Tree, IndexManager, LRUReplacer, and BufferPoolManager. |
-| **Execution Engine** | Pending | Volcano iterator model query execution. |
+| **SQL Execution Engine** | Completed | Complete execution layer with `ExecutionEngine`, `ExecutionContext`, `ExpressionEvaluator` (arithmetic, comparison, logic, SQL 3-valued NULL), and statement executors for `CREATE TABLE`, `INSERT`, `SELECT` (with projections, WHERE, LIMIT), `UPDATE`, `DELETE`, and `CREATE INDEX` with synchronized B+ Tree index maintenance. |
+| **Unit Test Suite** | Completed | 172 unit tests across 16 test suites covering Foundation, Lexer, AST, Parser, Page, Record, DiskManager, Database, B+ Tree, IndexManager, LRUReplacer, BufferPoolManager, ExpressionEvaluator, ExecutionEngine, and ShellExecution. |
+| **Query Optimizer** | Pending | Plan representation and cost-based optimizations. |
 
 ---
 

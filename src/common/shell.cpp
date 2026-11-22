@@ -1,5 +1,6 @@
 #include "common/shell.hpp"
 #include "common/config.hpp"
+#include "execution/execution_engine.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -7,10 +8,14 @@
 
 namespace querycraft::common {
 
-Shell::Shell(std::istream& in, std::ostream& out, std::ostream& err)
-    : in_(in), out_(out), err_(err), is_running_(false) {}
+Shell::Shell(std::istream& in, std::ostream& out, std::ostream& err,
+             execution::ExecutionEngine* engine)
+    : in_(in), out_(out), err_(err), engine_(engine), is_running_(false) {}
 
-Shell::Shell() : Shell(std::cin, std::cout, std::cerr) {}
+Shell::Shell(execution::ExecutionEngine* engine)
+    : Shell(std::cin, std::cout, std::cerr, engine) {}
+
+Shell::Shell() : Shell(std::cin, std::cout, std::cerr, nullptr) {}
 
 void Shell::run() {
     is_running_ = true;
@@ -51,6 +56,16 @@ ShellAction Shell::process_line(std::string_view raw_line) {
     // Meta command: Help
     if (upper_cmd == "HELP" || upper_cmd == ".HELP") {
         print_help();
+        return ShellAction::Continue;
+    }
+
+    if (engine_ != nullptr) {
+        auto result = engine_->execute(line);
+        if (!result.status().ok()) {
+            err_ << "Error: " << result.status().message() << '\n';
+        } else {
+            out_ << result.to_string() << '\n';
+        }
         return ShellAction::Continue;
     }
 

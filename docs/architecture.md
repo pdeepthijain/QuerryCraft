@@ -164,6 +164,30 @@ QueryCraft is a modular relational database management system (RDBMS) engine eng
     - Table directory: table names, page chains (`first_page_id`, `last_page_id`), and serialized `Schema` binary representations.
   - Automatic catalog persistence on modifications and recovery across application restarts.
 
+### SQL Execution Engine
+- **`include/execution/execution_context.hpp`**:
+  - Encapsulates execution state: references to `Database`, optional `IndexManager`, and optional `BufferPoolManager`.
+- **`include/execution/execution_result.hpp` & `src/execution/execution_result.cpp`**:
+  - Structured output representing query results and command outcomes.
+  - Carries `Status`, `is_query`, column names, column data types, row vectors of `Value`, `rows_affected`, and human-readable feedback.
+  - Implements aesthetic ASCII table formatting (`+----+----+`) with dynamic column width calculation.
+- **`include/execution/expression_evaluator.hpp` & `src/execution/expression_evaluator.cpp`**:
+  - Dynamically evaluates parsed AST expressions (`LiteralExpression`, `ColumnRefExpression`, `UnaryExpression`, `BinaryExpression`).
+  - Arithmetic operators (`+`, `-`, `*`, `/`) with division-by-zero checks and integer/floating-point promotion.
+  - Comparison operators (`=`, `!=`, `<`, `<=`, `>`, `>=`) with type-safe comparisons and SQL 3-valued NULL logic (comparisons involving NULL yield NULL).
+  - Logical operators (`AND`, `OR`) with short-circuit evaluation.
+  - Unary operators (`+`, `-`, `NOT`).
+  - Column reference resolution against active record and table schema.
+- **Statement Executors**:
+  - **`CreateTableExecutor`**: Validates table names, column constraints, primary keys, and types; constructs `Schema` and calls `Database::create_table()`.
+  - **`InsertExecutor`**: Validates column counts and types; supports full-row and explicit-column syntax; sets omitted nullable fields to NULL; validates NOT NULL constraints; inserts records and updates all corresponding B+ Tree indexes.
+  - **`SelectExecutor`**: Reads records via sequential scan; evaluates WHERE clauses with `ExpressionEvaluator`; applies column projections; handles LIMIT truncation.
+  - **`UpdateExecutor`**: Evaluates WHERE filter; updates columns in-place; validates schema constraints; updates B+ Tree indexes if indexed values change.
+  - **`DeleteExecutor`**: Evaluates WHERE filter; deletes matching records; removes corresponding entries from all table indexes.
+  - **`CreateIndexExecutor`**: Validates table, column, and data type; creates persistent B+ Tree in `IndexManager`; populates index from existing records; persists catalog.
+- **`include/execution/execution_engine.hpp` & `src/execution/execution_engine.cpp`**:
+  - Top-level query orchestrator dispatching parsed AST statements to their respective executors.
+
 ### B+ Tree Indexing Module
 - **`include/index/index_key.hpp` & `src/index/index_key.cpp`**:
   - Strongly-typed `IndexKey` representing `INT` (`int64_t`), `FLOAT` (`double`), and `TEXT` (`std::string`).
@@ -209,4 +233,7 @@ QueryCraft is a modular relational database management system (RDBMS) engine eng
 - **`tests/buffer/buffer_pool_manager_test.cpp`**: 18 unit tests verifying NewPage, FetchPage, cache hits avoiding disk reads, pin count decrement, dirty flag setting, FlushPage, FlushAllPages, DeletePage (pinned vs unpinned), small pool (2-3 frame) eviction, dirty flushing on eviction, clean page eviction without disk writes, all-pinned allocation failure, pinned page eviction immunity, LRU ordering, restart recovery, B+ Tree integration, IndexManager integration, and slotted-page record persistence.
 - **`tests/index/bplus_tree_test.cpp`**: 9 unit tests verifying point search, sorted/reverse insertions, duplicate key handling, leaf/internal splits, leaf/internal merges, leaf borrowing, root shrinking, range queries, float/text/NULL types, randomized stress testing vs `std::map` reference model, tree invariant validation, and disk persistence.
 - **`tests/index/index_manager_test.cpp`**: 6 unit tests verifying index creation, duplicate name/column rejection, CRUD entries, type mismatch validation, index dropping, and multi-index catalog persistence across restart sessions.
+- **`tests/execution/expression_evaluator_test.cpp`**: 7 unit tests covering literal evaluation, column references, arithmetic operations, comparisons, logical AND/OR/NOT, SQL 3-valued NULL semantics, and WHERE predicate evaluation.
+- **`tests/execution/execution_engine_test.cpp`**: 8 unit tests covering CREATE TABLE, duplicate rejection, INSERT full and explicit columns, constraint checking, SELECT projections and WHERE filtering, LIMIT, UPDATE, DELETE, CREATE INDEX with B+ Tree synchronization, and full session restart recovery.
+- **`tests/execution/shell_execution_test.cpp`**: 2 integration tests validating complete interactive CLI session workflows, tabular ASCII formatting, and error reporting through the shell.
 
