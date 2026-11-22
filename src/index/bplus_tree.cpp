@@ -1,4 +1,5 @@
 #include "index/bplus_tree.hpp"
+#include "buffer/buffer_pool_manager.hpp"
 
 #include <algorithm>
 #include <map>
@@ -545,6 +546,153 @@ common::Status BPlusTree::load(storage::DiskManager& dm,
         page_id_t parent_pid = INVALID_PAGE_ID;
 
         auto des_status = BPlusTreeNode::deserialize_from_page(page, max_keys, node, child_pids, parent_pid);
+        if (!des_status.ok()) {
+            return des_status;
+        }
+
+        loaded[pid] = NodeInfo{node, child_pids, parent_pid};
+
+        for (const auto cpid : child_pids) {
+            if (cpid != INVALID_PAGE_ID) {
+                to_load.push(cpid);
+            }
+        }
+    }
+
+    // Connect child pointers and parent pointers
+    for (auto& [pid, info] : loaded) {
+        if (!info.node->is_leaf()) {
+            for (const auto cpid : info.child_pids) {
+                auto it = loaded.find(cpid);
+                if (it == loaded.end()) {
+                    return common::Status::InternalError("Corrupted index: referenced child page " + std::to_string(cpid) + " not found");
+                }
+                info.node->children().push_back(it->second.node);
+                it->second.node->set_parent(info.node);
+            }
+        }
+    }
+
+    // Reconnect leaf links
+    for (auto& [pid, info] : loaded) {
+        if (info.node->is_leaf()) {
+            if (info.node->next_page_id() != INVALID_PAGE_ID) {
+                auto it = loaded.find(info.node->next_page_id());
+                if (it != loaded.end()) {
+                    info.node->set_next_leaf(it->second.node);
+                    it->second.node->set_prev_leaf(info.node);
+                }
+            }
+        }
+    }
+
+    auto tree = std::make_unique<BPlusTree>(max_keys);
+    auto root_it = loaded.find(root_pid);
+    if (root_it == loaded.end()) {
+        return common::Status::InternalError("Failed to find root node in loaded index pages");
+    }
+    tree->root_ = root_it->second.node;
+
+    out_tree = std::move(tree);
+    return common::Status::Ok();
+}
+
+common::Status BPlusTree::persist(buffer::BufferPoolManager& bpm, page_id_t& out_root_pid) {
+    if (!root_) {
+        out_root_pid = INVALID_PAGE_ID;
+        return common::Status::Ok();
+    }
+
+    std::vector<std::shared_ptr<BPlusTreeNode>> all_nodes;
+    std::queue<std::shared_ptr<BPlusTreeNode>> q;
+    q.push(root_);
+
+    while (!q.empty()) {
+        auto node = q.front();
+        q.pop();
+        all_nodes.push_back(node);
+
+        if (node->page_id() == INVALID_PAGE_ID) {
+            page_id_t new_pid = INVALID_PAGE_ID;
+            storage::Page* p = bpm.NewPage(new_pid, storage::PageType::INDEX_PAGE);
+            if (p == nullptr) {
+                return common::Status::InternalError("Failed to allocate new page from BufferPoolManager");
+            }
+            node->set_page_id(new_pid);
+            bpm.UnpinPage(new_pid, /*is_dirty=*/false);
+        }
+
+        if (!node->is_leaf()) {
+            for (const auto& child : node->children()) {
+                q.push(child);
+            }
+        }
+    }
+
+    // Update leaf page IDs
+    for (const auto& node : all_nodes) {
+        if (node->is_leaf()) {
+            node->set_next_page_id(node->next_leaf() ? node->next_leaf()->page_id() : INVALID_PAGE_ID);
+            node->set_prev_page_id(node->prev_leaf() ? node->prev_leaf()->page_id() : INVALID_PAGE_ID);
+        }
+    }
+
+    // Serialize each node into its buffer pool page
+    for (const auto& node : all_nodes) {
+        storage::Page* p = bpm.FetchPage(node->page_id());
+        if (p == nullptr) {
+            return common::Status::InternalError("Failed to fetch page from BufferPoolManager: " + std::to_string(node->page_id()));
+        }
+        auto ser_status = node->serialize_to_page(*p);
+        bpm.UnpinPage(node->page_id(), /*is_dirty=*/true);
+        if (!ser_status.ok()) {
+            return ser_status;
+        }
+    }
+
+    bpm.FlushAllPages();
+    out_root_pid = root_->page_id();
+    return common::Status::Ok();
+}
+
+common::Status BPlusTree::load(buffer::BufferPoolManager& bpm,
+                              page_id_t root_pid,
+                              std::size_t max_keys,
+                              std::unique_ptr<BPlusTree>& out_tree) {
+    if (root_pid == INVALID_PAGE_ID) {
+        out_tree = std::make_unique<BPlusTree>(max_keys);
+        return common::Status::Ok();
+    }
+
+    struct NodeInfo {
+        std::shared_ptr<BPlusTreeNode> node;
+        std::vector<page_id_t> child_pids;
+        page_id_t parent_pid;
+    };
+
+    std::map<page_id_t, NodeInfo> loaded;
+    std::queue<page_id_t> to_load;
+    to_load.push(root_pid);
+
+    while (!to_load.empty()) {
+        const auto pid = to_load.front();
+        to_load.pop();
+
+        if (loaded.find(pid) != loaded.end()) {
+            continue;
+        }
+
+        storage::Page* page_ptr = bpm.FetchPage(pid);
+        if (page_ptr == nullptr) {
+            return common::Status::InternalError("Failed to fetch index page " + std::to_string(pid) + " from BufferPoolManager");
+        }
+
+        std::shared_ptr<BPlusTreeNode> node;
+        std::vector<page_id_t> child_pids;
+        page_id_t parent_pid = INVALID_PAGE_ID;
+
+        auto des_status = BPlusTreeNode::deserialize_from_page(*page_ptr, max_keys, node, child_pids, parent_pid);
+        bpm.UnpinPage(pid, /*is_dirty=*/false);
         if (!des_status.ok()) {
             return des_status;
         }

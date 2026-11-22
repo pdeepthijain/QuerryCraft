@@ -12,6 +12,10 @@
 #include <unordered_map>
 #include <vector>
 
+namespace querycraft::buffer {
+class BufferPoolManager;
+}
+
 namespace querycraft::index {
 
 inline constexpr std::uint32_t INDEX_CATALOG_MAGIC = 0x51434958; // "QCIX"
@@ -75,6 +79,8 @@ public:
     // Persistence across application restarts
     common::Status persist(page_id_t& out_catalog_pid);
     common::Status load(page_id_t catalog_pid);
+    common::Status persist(buffer::BufferPoolManager& bpm, page_id_t& out_catalog_pid);
+    common::Status load(buffer::BufferPoolManager& bpm, page_id_t catalog_pid);
     [[nodiscard]] page_id_t catalog_page_id() const noexcept { return catalog_page_id_; }
 
 private:

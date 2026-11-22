@@ -11,6 +11,10 @@
 #include <utility>
 #include <vector>
 
+namespace querycraft::buffer {
+class BufferPoolManager;
+}
+
 namespace querycraft::index {
 
 class BPlusTree {
@@ -59,6 +63,13 @@ public:
     // Persistence with DiskManager
     common::Status persist(storage::DiskManager& dm, page_id_t& out_root_pid);
     static common::Status load(storage::DiskManager& dm,
+                               page_id_t root_pid,
+                               std::size_t max_keys,
+                               std::unique_ptr<BPlusTree>& out_tree);
+
+    // Persistence with BufferPoolManager
+    common::Status persist(buffer::BufferPoolManager& bpm, page_id_t& out_root_pid);
+    static common::Status load(buffer::BufferPoolManager& bpm,
                                page_id_t root_pid,
                                std::size_t max_keys,
                                std::unique_ptr<BPlusTree>& out_tree);

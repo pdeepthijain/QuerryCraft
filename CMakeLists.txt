@@ -122,6 +122,26 @@ target_link_libraries(querycraft_storage PUBLIC
 querycraft_enable_warnings(querycraft_storage)
 
 # -----------------------------------------------------------------------------
+# Buffer Pool Library: querycraft_buffer
+# -----------------------------------------------------------------------------
+add_library(querycraft_buffer STATIC
+    src/buffer/lru_replacer.cpp
+    src/buffer/buffer_pool_manager.cpp
+)
+
+target_include_directories(querycraft_buffer PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+
+target_link_libraries(querycraft_buffer PUBLIC
+    querycraft_common
+    querycraft_storage
+)
+
+querycraft_enable_warnings(querycraft_buffer)
+
+# -----------------------------------------------------------------------------
 # Index Library: querycraft_index
 # -----------------------------------------------------------------------------
 add_library(querycraft_index STATIC
@@ -139,6 +159,7 @@ target_include_directories(querycraft_index PUBLIC
 target_link_libraries(querycraft_index PUBLIC
     querycraft_common
     querycraft_storage
+    querycraft_buffer
 )
 
 querycraft_enable_warnings(querycraft_index)
@@ -154,6 +175,7 @@ target_link_libraries(querycraft PRIVATE
     querycraft_common
     querycraft_parser
     querycraft_storage
+    querycraft_buffer
     querycraft_index
 )
 
@@ -195,6 +217,8 @@ if(BUILD_TESTS)
         tests/storage/record_test.cpp
         tests/storage/disk_manager_test.cpp
         tests/storage/database_test.cpp
+        tests/buffer/lru_replacer_test.cpp
+        tests/buffer/buffer_pool_manager_test.cpp
         tests/index/bplus_tree_test.cpp
         tests/index/index_manager_test.cpp
     )
@@ -207,6 +231,7 @@ if(BUILD_TESTS)
         querycraft_common
         querycraft_parser
         querycraft_storage
+        querycraft_buffer
         querycraft_index
         GTest::gtest_main
     )

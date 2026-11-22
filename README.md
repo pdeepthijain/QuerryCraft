@@ -67,7 +67,9 @@ QueryCraft/
 │   │   └── index_manager.hpp   # Index metadata, table column indexing, and persistent catalog
 │   ├── execution/              # Volcano iterator execution model (upcoming)
 │   ├── optimizer/              # Query plan representation and optimizer (upcoming)
-│   └── buffer/                 # Buffer pool manager and frame eviction policies (upcoming)
+│   └── buffer/                 # Buffer pool manager and LRU frame eviction policy
+│       ├── lru_replacer.hpp    # O(1) LRU eviction tracking
+│       └── buffer_pool_manager.hpp # Page frame caching, pin/unpin, and dirty page flushing
 ├── src/                        # Implementation source files
 │   ├── common/                 # Common module implementations (e.g. Shell)
 │   ├── parser/                 # SQL Lexer and Parser implementations
@@ -86,9 +88,11 @@ QueryCraft/
 │   │   ├── bplus_tree_node.cpp # Leaf & internal node splitting, borrowing, and 4KB page serialization
 │   │   ├── bplus_tree.cpp      # B+ Tree algorithms, merge/redistribute, validator, and disk persistence
 │   │   └── index_manager.cpp   # Multi-index catalog management, lookup, and disk persistence
+│   ├── buffer/                 # Buffer pool manager implementation
+│   │   ├── lru_replacer.cpp    # O(1) double-linked list & hash map LRU replacer
+│   │   └── buffer_pool_manager.cpp # Frame allocation, caching, page table, and eviction
 │   ├── execution/              # Execution operators implementation (upcoming)
 │   ├── optimizer/              # Plan nodes and optimizer passes (upcoming)
-│   ├── buffer/                 # Buffer pool implementation (upcoming)
 │   └── main.cpp                # QueryCraft binary entry point
 ├── tests/                      # Automated test suite (GoogleTest)
 │   ├── common/                 # Unit tests for common utilities and Shell
@@ -101,6 +105,9 @@ QueryCraft/
 │   │   ├── record_test.cpp     # 11 tests for Value variants, type serialization, and schema validation
 │   │   ├── disk_manager_test.cpp # 6 tests for file I/O, page allocation, and persistence
 │   │   └── database_test.cpp   # 8 tests for table creation, CRUD, and restart recovery
+│   ├── buffer/                 # Unit tests for Buffer Pool Manager & LRU Replacer
+│   │   ├── lru_replacer_test.cpp # 8 tests for LRU victim order, pin constraints, size, and capacity
+│   │   └── buffer_pool_manager_test.cpp # 18 tests for fetch, unpin, dirty flush, small pool eviction, B+ Tree integration, restart recovery
 │   └── index/                  # Unit tests for B+ Tree indexing engine
 │       ├── bplus_tree_test.cpp # 9 tests for B+ Tree splits, merges, duplicates, range, validator & stress
 │       └── index_manager_test.cpp # 6 tests for index manager CRUD, types, and session restart persistence
@@ -212,8 +219,8 @@ ctest --test-dir build --output-on-failure
 
 Expected output:
 ```
-[==========] Running 129 tests from 11 test suites.
-[  PASSED  ] 129 tests.
+[==========] Running 155 tests from 13 test suites.
+[  PASSED  ] 155 tests.
 ```
 
 ---
@@ -231,10 +238,10 @@ Expected output:
 | **Slotted-Page Architecture** | Completed | 4KB page layout with 20-byte header, slot directory, downward-growing variable-length records, free space tracking, and compaction. |
 | **Schema & Record Management** | Completed | Schema definition with INT, FLOAT, TEXT, VARCHAR, nullability, primary key constraints, and type-tagged binary serialization. |
 | **Catalog & Persistence** | Completed | Multi-table management via `Database` and `Table`, Page 0 catalog persistence, and full schema/record recovery across restarts. |
-| **B+ Tree Indexing** | Completed | Disk-aware B+ Tree from scratch in C++20 mapping `IndexKey` to `RecordId`s, supporting inserts, node splits, deletions, borrowing, merging, root shrinking, duplicate keys, range queries, tree validator, and 4KB page persistence via `DiskManager`. |
+| **B+ Tree Indexing** | Completed | Disk-aware B+ Tree from scratch in C++20 mapping `IndexKey` to `RecordId`s, supporting inserts, node splits, deletions, borrowing, merging, root shrinking, duplicate keys, range queries, tree validator, and 4KB page persistence via `DiskManager` and `BufferPoolManager`. |
 | **Index Manager** | Completed | Column-level index management, type validation, index metadata catalog, and restart recovery across sessions. |
-| **Unit Test Suite** | Completed | 129 unit tests covering Shell, Status, Lexer, AST, Parser, Page, Record, DiskManager, Database, B+ Tree, and IndexManager. |
-| **Buffer Pool Manager** | Pending | Frame table, dirty tracking, LRU-K page eviction. |
+| **Buffer Pool Manager** | Completed | In-memory 4KB page caching with frame table, dirty page tracking, page pinning/unpinning, and LRU page replacement via `LRUReplacer` ($O(1)$ ops). Integrated with B+ Tree and restart recovery. |
+| **Unit Test Suite** | Completed | 155 unit tests covering Shell, Status, Lexer, AST, Parser, Page, Record, DiskManager, Database, B+ Tree, IndexManager, LRUReplacer, and BufferPoolManager. |
 | **Execution Engine** | Pending | Volcano iterator model query execution. |
 
 ---

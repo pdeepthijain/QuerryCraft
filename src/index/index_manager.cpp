@@ -1,4 +1,5 @@
 #include "index/index_manager.hpp"
+#include "buffer/buffer_pool_manager.hpp"
 
 #include <cctype>
 #include <cstring>
@@ -388,6 +389,195 @@ common::Status IndexManager::load(page_id_t catalog_pid) {
         indexes_.emplace(to_lower_ascii(index_name), IndexEntry{std::move(meta), std::move(tree)});
     }
 
+    catalog_page_id_ = catalog_pid;
+    return common::Status::Ok();
+}
+
+common::Status IndexManager::persist(buffer::BufferPoolManager& bpm, page_id_t& out_catalog_pid) {
+    if (!bpm.disk_manager().is_open()) {
+        return common::Status::IoError("DiskManager is not open");
+    }
+
+    // First persist all B+ Tree indexes
+    for (auto& [_, entry] : indexes_) {
+        auto persist_tree_status = entry.tree->persist(bpm, entry.metadata.root_page_id);
+        if (!persist_tree_status.ok()) {
+            return persist_tree_status;
+        }
+    }
+
+    if (catalog_page_id_ == INVALID_PAGE_ID) {
+        page_id_t new_pid = INVALID_PAGE_ID;
+        storage::Page* p = bpm.NewPage(new_pid, storage::PageType::CATALOG_PAGE);
+        if (p == nullptr) {
+            return common::Status::InternalError("Failed to allocate index catalog page from BufferPoolManager");
+        }
+        catalog_page_id_ = new_pid;
+        bpm.UnpinPage(new_pid, /*is_dirty=*/false);
+    }
+
+    storage::Page* p = bpm.FetchPage(catalog_page_id_);
+    if (p == nullptr) {
+        return common::Status::InternalError("Failed to fetch catalog page from BufferPoolManager: " + std::to_string(catalog_page_id_));
+    }
+
+    p->reset(catalog_page_id_, storage::PageType::CATALOG_PAGE);
+    auto* buf = p->data();
+
+    std::uint32_t magic = INDEX_CATALOG_MAGIC;
+    std::memcpy(buf + 0, &magic, sizeof(magic));
+
+    std::uint16_t version = INDEX_CATALOG_VERSION;
+    std::memcpy(buf + 4, &version, sizeof(version));
+
+    std::uint16_t count = static_cast<std::uint16_t>(indexes_.size());
+    std::memcpy(buf + 6, &count, sizeof(count));
+
+    std::size_t offset = 8;
+
+    for (const auto& [_, entry] : indexes_) {
+        const auto& meta = entry.metadata;
+        const auto idx_len = static_cast<std::uint16_t>(meta.index_name.size());
+        const auto tbl_len = static_cast<std::uint16_t>(meta.table_name.size());
+        const auto col_len = static_cast<std::uint16_t>(meta.column_name.size());
+
+        const auto needed = sizeof(idx_len) + idx_len +
+                            sizeof(tbl_len) + tbl_len +
+                            sizeof(col_len) + col_len +
+                            sizeof(std::uint8_t) +
+                            sizeof(meta.root_page_id) +
+                            sizeof(std::uint32_t);
+
+        if (offset + needed > PAGE_SIZE) {
+            bpm.UnpinPage(catalog_page_id_, /*is_dirty=*/false);
+            return common::Status::InternalError("Index catalog capacity exceeded 4KB page size");
+        }
+
+        std::memcpy(buf + offset, &idx_len, sizeof(idx_len));
+        offset += sizeof(idx_len);
+        std::memcpy(buf + offset, meta.index_name.data(), idx_len);
+        offset += idx_len;
+
+        std::memcpy(buf + offset, &tbl_len, sizeof(tbl_len));
+        offset += sizeof(tbl_len);
+        std::memcpy(buf + offset, meta.table_name.data(), tbl_len);
+        offset += tbl_len;
+
+        std::memcpy(buf + offset, &col_len, sizeof(col_len));
+        offset += sizeof(col_len);
+        std::memcpy(buf + offset, meta.column_name.data(), col_len);
+        offset += col_len;
+
+        const auto ktype = static_cast<std::uint8_t>(meta.key_type);
+        buf[offset++] = ktype;
+
+        std::memcpy(buf + offset, &meta.root_page_id, sizeof(meta.root_page_id));
+        offset += sizeof(meta.root_page_id);
+
+        const auto max_k = static_cast<std::uint32_t>(meta.max_keys);
+        std::memcpy(buf + offset, &max_k, sizeof(max_k));
+        offset += sizeof(max_k);
+    }
+
+    bpm.UnpinPage(catalog_page_id_, /*is_dirty=*/true);
+    bpm.FlushAllPages();
+
+    out_catalog_pid = catalog_page_id_;
+    return common::Status::Ok();
+}
+
+common::Status IndexManager::load(buffer::BufferPoolManager& bpm, page_id_t catalog_pid) {
+    if (!bpm.disk_manager().is_open()) {
+        return common::Status::IoError("DiskManager is not open");
+    }
+
+    if (catalog_pid == INVALID_PAGE_ID) {
+        indexes_.clear();
+        catalog_page_id_ = INVALID_PAGE_ID;
+        return common::Status::Ok();
+    }
+
+    storage::Page* p = bpm.FetchPage(catalog_pid);
+    if (p == nullptr) {
+        return common::Status::InternalError("Failed to fetch index catalog page from BufferPoolManager: " + std::to_string(catalog_pid));
+    }
+
+    const auto* buf = p->data();
+
+    std::uint32_t magic = 0;
+    std::memcpy(&magic, buf + 0, sizeof(magic));
+    if (magic != INDEX_CATALOG_MAGIC) {
+        bpm.UnpinPage(catalog_pid, /*is_dirty=*/false);
+        return common::Status::InternalError("Corrupted index catalog: invalid magic signature");
+    }
+
+    std::uint16_t version = 0;
+    std::memcpy(&version, buf + 4, sizeof(version));
+    if (version != INDEX_CATALOG_VERSION) {
+        bpm.UnpinPage(catalog_pid, /*is_dirty=*/false);
+        return common::Status::InternalError("Unsupported index catalog version: " + std::to_string(version));
+    }
+
+    std::uint16_t count = 0;
+    std::memcpy(&count, buf + 6, sizeof(count));
+
+    std::size_t offset = 8;
+    indexes_.clear();
+
+    for (std::uint16_t i = 0; i < count; ++i) {
+        if (offset + sizeof(std::uint16_t) > PAGE_SIZE) {
+            bpm.UnpinPage(catalog_pid, /*is_dirty=*/false);
+            return common::Status::InternalError("Index catalog corrupted: unexpected EOF reading index name len");
+        }
+        std::uint16_t idx_len = 0;
+        std::memcpy(&idx_len, buf + offset, sizeof(idx_len));
+        offset += sizeof(idx_len);
+
+        std::string index_name(reinterpret_cast<const char*>(buf + offset), idx_len);
+        offset += idx_len;
+
+        std::uint16_t tbl_len = 0;
+        std::memcpy(&tbl_len, buf + offset, sizeof(tbl_len));
+        offset += sizeof(tbl_len);
+        std::string table_name(reinterpret_cast<const char*>(buf + offset), tbl_len);
+        offset += tbl_len;
+
+        std::uint16_t col_len = 0;
+        std::memcpy(&col_len, buf + offset, sizeof(col_len));
+        offset += sizeof(col_len);
+        std::string column_name(reinterpret_cast<const char*>(buf + offset), col_len);
+        offset += col_len;
+
+        const auto ktype = static_cast<KeyType>(buf[offset++]);
+
+        page_id_t root_pid = INVALID_PAGE_ID;
+        std::memcpy(&root_pid, buf + offset, sizeof(root_pid));
+        offset += sizeof(root_pid);
+
+        std::uint32_t max_k = 4;
+        std::memcpy(&max_k, buf + offset, sizeof(max_k));
+        offset += sizeof(max_k);
+
+        std::unique_ptr<BPlusTree> tree;
+        auto load_tree_status = BPlusTree::load(bpm, root_pid, max_k, tree);
+        if (!load_tree_status.ok()) {
+            bpm.UnpinPage(catalog_pid, /*is_dirty=*/false);
+            return load_tree_status;
+        }
+
+        IndexMetadata meta{
+            .index_name = index_name,
+            .table_name = table_name,
+            .column_name = column_name,
+            .key_type = ktype,
+            .root_page_id = root_pid,
+            .max_keys = max_k
+        };
+
+        indexes_.emplace(to_lower_ascii(index_name), IndexEntry{std::move(meta), std::move(tree)});
+    }
+
+    bpm.UnpinPage(catalog_pid, /*is_dirty=*/false);
     catalog_page_id_ = catalog_pid;
     return common::Status::Ok();
 }

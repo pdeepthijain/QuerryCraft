@@ -100,6 +100,33 @@ QueryCraft is a modular relational database management system (RDBMS) engine eng
     `Primary` -> `Unary` (`+`, `-`) -> `Multiplicative` (`*`, `/`) -> `Additive` (`+`, `-`) -> `Comparison` (`=`, `!=`, `<`, `<=`, `>`, `>=`) -> `Unary NOT` -> `Logical AND` -> `Logical OR`.
   - Diagnostic error reporting with line/column coordinates via `Status::SyntaxError`.
 
+### Buffer Pool Manager & LRU Replacement Policy
+- **`include/buffer/lru_replacer.hpp` & `src/buffer/lru_replacer.cpp`**:
+  - In-memory eviction tracking implementing the Least-Recently-Used (LRU) policy.
+  - Constant time $O(1)$ operations via combination of `std::list<frame_id_t>` and `std::unordered_map<frame_id_t, list::iterator>`.
+  - Operations:
+    - `Victim(frame_id*)`: Selects least recently used unpinned frame for eviction.
+    - `Pin(frame_id)`: Removes frame from eviction consideration when pinned by a thread/query.
+    - `Unpin(frame_id)`: Re-adds frame to MRU position when pin count drops to 0. Duplicate unpins are safely ignored.
+    - `RecordAccess(frame_id)`: Moves evictable frame to the MRU position.
+    - `Size()` & `Capacity()`: Tracks active evictable frames.
+- **`include/buffer/buffer_pool_manager.hpp` & `src/buffer/buffer_pool_manager.cpp`**:
+  - Memory manager caching 4096-byte pages in memory frames.
+  - Components:
+    - Array of `Frame` structs holding `Page`, `page_id`, `pin_count`, `is_dirty`, and `is_occupied`.
+    - Page table (`std::unordered_map<page_id_t, frame_id_t>`) mapping disk page IDs to memory frame indices.
+    - Free list (`std::vector<frame_id_t>`) tracking unoccupied frames.
+    - `LRUReplacer` managing victim candidate selection.
+  - Core Operations:
+    - `FetchPage(page_id)`: Returns in-memory page; reads from disk on miss; manages pin count and LRU status.
+    - `UnpinPage(page_id, is_dirty)`: Decrements pin count; updates dirty bit; enables LRU eviction when pin count reaches 0.
+    - `NewPage(out_page_id, type)`: Allocates new page on disk and installs it in an available frame with pin count 1.
+    - `DeletePage(page_id)`: Frees frame if page is unpinned; returns frame to free list.
+    - `FlushPage(page_id)`: Writes dirty page to disk, clears dirty bit, and flushes underlying file.
+    - `FlushAllPages()`: Flushes all dirty frames to disk and calls `DiskManager::flush()`.
+  - Telemetry: Tracks `num_reads`, `num_writes`, `num_hits`, `num_misses`.
+  - Integration: Integrated with `BPlusTree` and `IndexManager` persistence and restart recovery.
+
 ### Persistent Storage Engine
 - **`include/storage/page.hpp` & `src/storage/page.cpp`**:
   - Fixed-size 4096-byte page abstraction with boundary-checked accessors (`read_bytes()`, `write_bytes()`).
@@ -178,6 +205,8 @@ QueryCraft is a modular relational database management system (RDBMS) engine eng
 - **`tests/storage/record_test.cpp`**: 11 unit tests verifying `Value` variants, integer/float/string/NULL binary serialization, and schema constraint validation.
 - **`tests/storage/disk_manager_test.cpp`**: 6 unit tests verifying database file creation, page allocation, reading/writing pages, persistence across instances, and boundary conditions.
 - **`tests/storage/database_test.cpp`**: 8 unit tests verifying table creation, duplicate rejection, CRUD record operations, full multi-page scans, and catalog/schema/record persistence across application restarts.
+- **`tests/buffer/lru_replacer_test.cpp`**: 8 unit tests verifying LRU victim order, pin protection against eviction, unpin MRU position, access recording, duplicate unpin handling, out-of-range bounds, size, and capacity.
+- **`tests/buffer/buffer_pool_manager_test.cpp`**: 18 unit tests verifying NewPage, FetchPage, cache hits avoiding disk reads, pin count decrement, dirty flag setting, FlushPage, FlushAllPages, DeletePage (pinned vs unpinned), small pool (2-3 frame) eviction, dirty flushing on eviction, clean page eviction without disk writes, all-pinned allocation failure, pinned page eviction immunity, LRU ordering, restart recovery, B+ Tree integration, IndexManager integration, and slotted-page record persistence.
 - **`tests/index/bplus_tree_test.cpp`**: 9 unit tests verifying point search, sorted/reverse insertions, duplicate key handling, leaf/internal splits, leaf/internal merges, leaf borrowing, root shrinking, range queries, float/text/NULL types, randomized stress testing vs `std::map` reference model, tree invariant validation, and disk persistence.
 - **`tests/index/index_manager_test.cpp`**: 6 unit tests verifying index creation, duplicate name/column rejection, CRUD entries, type mismatch validation, index dropping, and multi-index catalog persistence across restart sessions.
 
