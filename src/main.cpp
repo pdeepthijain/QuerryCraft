@@ -6,11 +6,18 @@
 #include <filesystem>
 #include <iostream>
 
-int main() {
+int main(int argc, char* argv[]) {
     try {
+        std::string db_path = "data/querycraft.db";
+        if (argc > 1 && argv[1] != nullptr && argv[1][0] != '\0') {
+            db_path = argv[1];
+        }
         std::error_code ec;
-        std::filesystem::create_directories("data", ec);
-        querycraft::storage::Database db("data/querycraft.db");
+        std::filesystem::path p(db_path);
+        if (p.has_parent_path()) {
+            std::filesystem::create_directories(p.parent_path(), ec);
+        }
+        querycraft::storage::Database db(db_path);
         querycraft::index::IndexManager im(db.disk_manager());
         (void)im.auto_load();
 
